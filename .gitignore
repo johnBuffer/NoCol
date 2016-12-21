@@ -45,3 +45,11 @@ $RECYCLE.BIN/
 Network Trash Folder
 Temporary Items
 .apdisk
+*.exe
+*.dll
+NoCol.cbp
+*.depend
+NoCol.layout
+*.o
+bin/Release/blur.frag
+bin/Release/config
