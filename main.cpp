@@ -300,12 +300,6 @@ int main()
         renderer.draw(stableIndicator);
         renderer.display();
 
-        drawer.setParameter("MIN_HEIGHT", WIN_HEIGHT-mousePos.y);
-        drawer.setParameter("ORIGINAL_TEXTURE", renderer.getTexture());
-        dblur.setFactor(3);
-        renderer.draw(sf::Sprite(dblur(renderer.getTexture())), &drawer);
-        renderer.display();
-
         window.draw(sf::Sprite(renderer.getTexture()));
         window.display();
 
