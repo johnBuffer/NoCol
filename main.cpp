@@ -5,8 +5,10 @@
 #include <iostream>
 #include <fstream>
 
-int WIN_WIDTH = 800;
-int WIN_HEIGHT = 800;
+#include "DynamicBlur.h"
+
+int WIN_WIDTH = 512;
+int WIN_HEIGHT = 512;
 
 struct Ball
 {
@@ -40,9 +42,6 @@ bool update(std::vector<Ball>& balls, double speed)
 	    Ball& currentBall = balls[i];
 		currentBall.vx += (WIN_WIDTH/2-currentBall.x)*0.001;
 		currentBall.vy += (WIN_HEIGHT/2-currentBall.y)*0.001;
-
-		/*currentBall.x += currentBall.vx*speed;
-		currentBall.y += currentBall.vy*speed;*/
 
 		for (int k=0; k<nBalls; k++)
 		{
@@ -114,16 +113,18 @@ int main()
     bool drawTraces = true;
     bool synccEnable = true;
 
-    sf::Shader shader, blur;
+    sf::Shader shader;
     if (!shader.loadFromFile("shader.frag", sf::Shader::Fragment))
     {
         std::cout << "Shader loading error..." << std::endl;
     }
 
-    if (!blur.loadFromFile("blur.frag", sf::Shader::Fragment))
-    {
-        std::cout << "Shader loading error..." << std::endl;
-    }
+    sf::Shader drawer;
+    if (!drawer.loadFromFile("drawer.frag", sf::Shader::Fragment))
+        std::cout << "Erreur" << std::endl;
+
+    drawer.setParameter("WIDTH", WIN_WIDTH);
+    drawer.setParameter("HEIGHT", WIN_HEIGHT);
 
     int nBalls = 0;
     int maxSize = 22;
@@ -140,21 +141,21 @@ int main()
     for (int i(0); i<nBalls; i++)
         balls.push_back(Ball(rand()%WIN_WIDTH, rand()%WIN_HEIGHT, rand()%(maxSize-minSize)+minSize));
 
-    sf::RenderTexture traces, blurTexture;
+    sf::RenderTexture traces, blurTexture, renderer;
     blurTexture.create(WIN_WIDTH, WIN_HEIGHT);
     traces.create(WIN_WIDTH, WIN_HEIGHT);
+    renderer.create(WIN_WIDTH, WIN_HEIGHT);
 
     traces.clear(sf::Color::Black);
     traces.display();
     shader.setParameter("WIDTH", WIN_WIDTH);
     shader.setParameter("HEIGHT", WIN_HEIGHT);
 
-    blur.setParameter("WIDTH", WIN_WIDTH);
-    blur.setParameter("HEIGHT", WIN_HEIGHT);
+    DynamicBlur dblur(WIN_WIDTH, WIN_HEIGHT);
 
     while (window.isOpen())
     {
-        sf::Vector2i mousePosition = sf::Mouse::getPosition(window);
+        sf::Vector2i mousePos = sf::Mouse::getPosition(window);
 
         sf::Event event;
         while (window.pollEvent(event))
@@ -216,7 +217,7 @@ int main()
 
         updatePos(balls, speedDownFactor, speedDownCounter);
 
-        window.clear(sf::Color::Black);
+        renderer.clear(sf::Color::Black);
 
         if (speedDownCounter == speedDownFactor-1)
         {
@@ -225,17 +226,15 @@ int main()
             traces.draw(sf::Sprite(traces.getTexture()), &shader);
             traces.display();
 
-            blurTexture.clear(sf::Color::Black);
-            blurTexture.draw(sf::Sprite(traces.getTexture()), &blur);
-            blurTexture.display();
-            blurTexture.draw(sf::Sprite(blurTexture.getTexture()), &blur);
+            dblur.setFactor(1);
+            blurTexture.draw(sf::Sprite(dblur(traces.getTexture())));
             blurTexture.display();
         }
 
         if (drawTraces)
         {
-            window.draw(sf::Sprite(traces.getTexture()));
-            window.draw(sf::Sprite(blurTexture.getTexture()), sf::BlendAdd);
+            renderer.draw(sf::Sprite(traces.getTexture()));
+            renderer.draw(sf::Sprite(blurTexture.getTexture()), sf::BlendAdd);
         }
 
         for (Ball& b : balls)
@@ -251,7 +250,7 @@ int main()
             ballRepresentation.setFillColor(color);
             ballRepresentation.setOrigin(r, r);
             ballRepresentation.setPosition(b.x, b.y);
-            window.draw(ballRepresentation);
+            renderer.draw(ballRepresentation);
 
             sf::VertexArray trace(sf::Lines, 2);
             trace[0].position = sf::Vector2f(b.x, b.y);
@@ -298,8 +297,16 @@ int main()
         if (stable)
             stableIndicator.setFillColor(sf::Color::Green);
 
-        window.draw(stableIndicator);
+        renderer.draw(stableIndicator);
+        renderer.display();
 
+        drawer.setParameter("MIN_HEIGHT", WIN_HEIGHT-mousePos.y);
+        drawer.setParameter("ORIGINAL_TEXTURE", renderer.getTexture());
+        dblur.setFactor(3);
+        renderer.draw(sf::Sprite(dblur(renderer.getTexture())), &drawer);
+        renderer.display();
+
+        window.draw(sf::Sprite(renderer.getTexture()));
         window.display();
 
         iterations++;
