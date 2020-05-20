@@ -6,9 +6,11 @@
 #include <fstream>
 
 #include "DynamicBlur.h"
+#include "display_manager.hpp"
 
-int WIN_WIDTH = 512;
-int WIN_HEIGHT = 512;
+
+int WIN_WIDTH = 1600;
+int WIN_HEIGHT = 900;
 
 struct Ball
 {
@@ -37,11 +39,14 @@ bool update(std::vector<Ball>& balls, double speed)
 
     int nBalls = balls.size();
 
+	const float dt = 0.008f;
+
     for (int i(0); i<nBalls; i++)
 	{
 	    Ball& currentBall = balls[i];
-		currentBall.vx += (WIN_WIDTH/2-currentBall.x)*0.001;
-		currentBall.vy += (WIN_HEIGHT/2-currentBall.y)*0.001;
+		// Attraction to center
+		currentBall.vx += (WIN_WIDTH/2-currentBall.x) * dt;
+		currentBall.vy += (WIN_HEIGHT/2-currentBall.y) * dt;
 
 		for (int k=0; k<nBalls; k++)
 		{
@@ -87,20 +92,37 @@ bool update(std::vector<Ball>& balls, double speed)
 
 void updatePos(std::vector<Ball>& balls, double& speedDownFactor, double& speedDownCounter)
 {
+	const float dt = 0.016f;
     for (Ball& currentBall : balls)
     {
-        currentBall.x += currentBall.vx/speedDownFactor;
-        currentBall.y += currentBall.vy/speedDownFactor;
+        currentBall.x += dt * currentBall.vx/speedDownFactor;
+        currentBall.y += dt * currentBall.vy/speedDownFactor;
     }
 
     speedDownCounter--;
 }
 
+
+const Ball* getBallAt(const sf::Vector2f& position, const std::vector<Ball>& balls)
+{
+	for (const Ball& ball : balls) {
+		const float vx = position.x - ball.x;
+		const float vy = position.y - ball.y;
+		const float dist = sqrt(vx*vx + vy * vy);
+		if (dist < ball.r) {
+			return &ball;
+		}
+	}
+
+	return nullptr;
+}
+
+
 int main()
 {
     srand(time(0));
     sf::ContextSettings settings;
-    settings.antialiasingLevel = 2;
+    settings.antialiasingLevel = 8;
     sf::RenderWindow window(sf::VideoMode(WIN_WIDTH, WIN_HEIGHT), "TEST", sf::Style::Default, settings);
     window.setVerticalSyncEnabled(true);
 
@@ -113,21 +135,8 @@ int main()
     bool drawTraces = true;
     bool synccEnable = true;
 
-    sf::Shader shader;
-    if (!shader.loadFromFile("shader.frag", sf::Shader::Fragment))
-    {
-        std::cout << "Shader loading error..." << std::endl;
-    }
-
-    sf::Shader drawer;
-    if (!drawer.loadFromFile("drawer.frag", sf::Shader::Fragment))
-        std::cout << "Erreur" << std::endl;
-
-    drawer.setParameter("WIDTH", WIN_WIDTH);
-    drawer.setParameter("HEIGHT", WIN_HEIGHT);
-
-    int nBalls = 0;
-    int maxSize = 22;
+    int nBalls = 20;
+    int maxSize = 42;
     int minSize = 2;
 
     std::ifstream infile;
@@ -148,54 +157,41 @@ int main()
 
     traces.clear(sf::Color::Black);
     traces.display();
-    shader.setParameter("WIDTH", WIN_WIDTH);
-    shader.setParameter("HEIGHT", WIN_HEIGHT);
 
-    DynamicBlur dblur(WIN_WIDTH, WIN_HEIGHT);
+	DisplayManager display_manager(window);
+	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::A, [&](sfev::CstEv) { drawTraces = !drawTraces; });
+	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::C, [&](sfev::CstEv) { traces.clear(); });
+	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::Space, [&](sfev::CstEv) {  
+		speedDownFactorGoal = speedDownFactor == 1 ? 10 : 1;
+	});
+	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::E, [&](sfev::CstEv) { 
+		synccEnable = !synccEnable;
+		window.setVerticalSyncEnabled(synccEnable);
+	});
 
+	const Ball* focus = nullptr;
+
+ 
     while (window.isOpen())
     {
         sf::Vector2i mousePos = sf::Mouse::getPosition(window);
 
-        sf::Event event;
-        while (window.pollEvent(event))
-        {
-			switch (event.type)
-			{
-				case sf::Event::KeyPressed:
-					if (event.key.code == sf::Keyboard::Escape) window.close();
-					else if (event.key.code == sf::Keyboard::Space)
-                    {
-                        if (speedDownFactor == 1)
-                        {
-                            speedDownFactorGoal = 20;
-                        }
-                        else
-                        {
-                            speedDownFactorGoal = 1;
-                        }
-                    }
-                    else if (event.key.code == sf::Keyboard::A)
-                        drawTraces = !drawTraces;
-                    else if (event.key.code == sf::Keyboard::E)
-                    {
-                        synccEnable = !synccEnable;
-                        window.setVerticalSyncEnabled(synccEnable);
-                    }
-                    break;
-                case sf::Event::MouseButtonPressed:
-                    break;
-                case sf::Event::MouseMoved:
-                    break;
-				default:
-                    break;
-			}
-        }
+		std::vector<sf::Event> events = display_manager.processEvents();
+		const sf::RenderStates rs = display_manager.getRenderStates();
 
         if (iterations%5 == 0 && waitingSpeedFactor != speedDownFactorGoal)
         {
-            waitingSpeedFactor += speedDownFactorGoal > waitingSpeedFactor ? 1 : speedDownFactorGoal-waitingSpeedFactor;
+            waitingSpeedFactor += speedDownFactorGoal-waitingSpeedFactor;
         }
+
+		if (display_manager.clic) {
+			focus = getBallAt(display_manager.getWorldMousePosition(), balls);
+			display_manager.clic = false;
+		}
+
+		if (focus) {
+			display_manager.setOffset(focus->x, focus->y);
+		}
 
         bool stable = true;
         if (!speedDownCounter)
@@ -219,29 +215,16 @@ int main()
 
         renderer.clear(sf::Color::Black);
 
-        if (speedDownCounter == speedDownFactor-1)
-        {
-            traces.display();
-            shader.setParameter("texture", traces.getTexture());
-            traces.draw(sf::Sprite(traces.getTexture()), &shader);
-            traces.display();
+		if (drawTraces)
+		{
+			renderer.draw(sf::Sprite(traces.getTexture()), rs);
+		}
 
-            dblur.setFactor(1);
-            blurTexture.draw(sf::Sprite(dblur(traces.getTexture())));
-            blurTexture.display();
-        }
-
-        if (drawTraces)
-        {
-            renderer.draw(sf::Sprite(traces.getTexture()));
-            renderer.draw(sf::Sprite(blurTexture.getTexture()), sf::BlendAdd);
-        }
-
-        for (Ball& b : balls)
+        for (const Ball& b : balls)
         {
             int c = b.stableCount > 255 ? 255 : b.stableCount;
-            sf::Color color = sf::Color(255-c, c, 0);
-            double r = b.r*c/255.0;
+            sf::Color color = sf::Color(255 - c, c, 0);
+            double r = b.r;
 
             if (speedDownFactor > 1)
                 r = b.r;
@@ -250,18 +233,21 @@ int main()
             ballRepresentation.setFillColor(color);
             ballRepresentation.setOrigin(r, r);
             ballRepresentation.setPosition(b.x, b.y);
-            renderer.draw(ballRepresentation);
+            renderer.draw(ballRepresentation, rs);
 
-            sf::VertexArray trace(sf::Lines, 2);
-            trace[0].position = sf::Vector2f(b.x, b.y);
-            trace[1].position = sf::Vector2f(b.oldX, b.oldY);
+			if (drawTraces)
+			{
+				sf::VertexArray trace(sf::Lines, 2);
+				trace[0].position = sf::Vector2f(b.x, b.y);
+				trace[1].position = sf::Vector2f(b.oldX, b.oldY);
 
-            trace[0].color = color;
-            trace[1].color = color;
+				trace[0].color = color;
+				trace[1].color = color;
 
-            traces.draw(trace);
+				traces.draw(trace);
+			}
 
-            if (!b.stableCount && speedDownCounter == speedDownFactor-1)
+            /*if (!b.stableCount && speedDownCounter == speedDownFactor-1)
             {
                 double r = b.r;
                 ballRepresentation.setRadius(r);
@@ -288,7 +274,7 @@ int main()
                 }
 
                 traces.draw(circle);
-            }
+            }*/
         }
 
         sf::CircleShape stableIndicator(10);
