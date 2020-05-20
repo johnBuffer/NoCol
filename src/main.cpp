@@ -9,8 +9,10 @@
 #include "display_manager.hpp"
 
 
-int WIN_WIDTH = 1600;
-int WIN_HEIGHT = 900;
+int WIN_WIDTH = 1920;
+int WIN_HEIGHT = 1080;
+const uint32_t max_history = 100;
+
 
 struct Ball
 {
@@ -18,10 +20,25 @@ struct Ball
     double vx, vy;
     double r;
 
+	std::vector<sf::Vector2f> position_history;
+	uint32_t current_idx;
+
     bool stable;
     int stableCount;
 
-    Ball(double arg_x, double arg_y, double arg_r) : x(arg_x), y(arg_y), vx(5), vy(-1), r(arg_r)
+	Ball()
+		: position_history(max_history)
+		, current_idx(0)
+	{}
+
+	Ball(double arg_x, double arg_y, double arg_r)
+		: x(arg_x)
+		, y(arg_y)
+		, vx(5)
+		, vy(-1)
+		, r(arg_r)
+		, position_history(max_history)
+		, current_idx(0)
     {
         stableCount = 0;
     }
@@ -30,7 +47,23 @@ struct Ball
     {
         oldX = x;
         oldY = y;
+
+		position_history[current_idx] = sf::Vector2f(x, y);
+		current_idx = (++current_idx) % max_history;
     }
+
+	sf::VertexArray getVA() const
+	{
+		sf::VertexArray va(sf::LineStrip, max_history);
+		for (uint32_t i(0); i < max_history; ++i) {
+			const uint32_t actual_idx = (i + current_idx) % max_history;
+			const float ratio = i / float(max_history);
+			va[i].position = position_history[actual_idx];
+			va[i].color = sf::Color(0, 255 * ratio, 0);
+		}
+
+		return va;
+	}
 };
 
 bool update(std::vector<Ball>& balls, double speed)
@@ -45,8 +78,8 @@ bool update(std::vector<Ball>& balls, double speed)
 	{
 	    Ball& currentBall = balls[i];
 		// Attraction to center
-		currentBall.vx += (WIN_WIDTH/2-currentBall.x) * dt;
-		currentBall.vy += (WIN_HEIGHT/2-currentBall.y) * dt;
+		currentBall.vx += 0.2f * (WIN_WIDTH/2-currentBall.x) * dt;
+		currentBall.vy += 0.2f * (WIN_HEIGHT/2-currentBall.y) * dt;
 
 		for (int k=0; k<nBalls; k++)
 		{
@@ -93,15 +126,13 @@ bool update(std::vector<Ball>& balls, double speed)
 void updatePos(std::vector<Ball>& balls, double& speedDownFactor, double& speedDownCounter)
 {
 	const float dt = 0.016f;
-    for (Ball& currentBall : balls)
-    {
+    for (Ball& currentBall : balls) {
         currentBall.x += dt * currentBall.vx/speedDownFactor;
         currentBall.y += dt * currentBall.vy/speedDownFactor;
     }
 
     speedDownCounter--;
 }
-
 
 const Ball* getBallAt(const sf::Vector2f& position, const std::vector<Ball>& balls)
 {
@@ -123,7 +154,7 @@ int main()
     srand(time(0));
     sf::ContextSettings settings;
     settings.antialiasingLevel = 8;
-    sf::RenderWindow window(sf::VideoMode(WIN_WIDTH, WIN_HEIGHT), "TEST", sf::Style::Default, settings);
+    sf::RenderWindow window(sf::VideoMode(WIN_WIDTH, WIN_HEIGHT), "NoCol", sf::Style::Fullscreen, settings);
     window.setVerticalSyncEnabled(true);
 
     double speedDownFactor = 1;
@@ -135,7 +166,7 @@ int main()
     bool drawTraces = true;
     bool synccEnable = true;
 
-    int nBalls = 20;
+    int nBalls = 80;
     int maxSize = 42;
     int minSize = 2;
 
@@ -164,13 +195,13 @@ int main()
 	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::Space, [&](sfev::CstEv) {  
 		speedDownFactorGoal = speedDownFactor == 1 ? 10 : 1;
 	});
+	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::Escape, [&](sfev::CstEv) {window.close(); });
 	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::E, [&](sfev::CstEv) { 
 		synccEnable = !synccEnable;
 		window.setVerticalSyncEnabled(synccEnable);
 	});
 
 	const Ball* focus = nullptr;
-
  
     while (window.isOpen())
     {
@@ -197,15 +228,13 @@ int main()
         if (!speedDownCounter)
         {
             int nBalls = balls.size();
-            for (int i(0); i<nBalls; i++)
-            {
-                balls[i].stable = true;
-                balls[i].save();
+            for (Ball& ball : balls) {
+                ball.stable = true;
+                ball.save();
             }
 
             stable = update(balls, 1);
-            if (waitingSpeedFactor)
-            {
+            if (waitingSpeedFactor) {
                 speedDownFactor = waitingSpeedFactor;
             }
             speedDownCounter = speedDownFactor;
@@ -215,9 +244,13 @@ int main()
 
         renderer.clear(sf::Color::Black);
 
-		if (drawTraces)
-		{
-			renderer.draw(sf::Sprite(traces.getTexture()), rs);
+		sf::RenderStates rs_traces = rs;
+		rs_traces.blendMode = sf::BlendAdd;
+		for (const Ball& b : balls) {
+			if (drawTraces) {
+				sf::VertexArray trace = b.getVA();
+				renderer.draw(trace, rs_traces);
+			}
 		}
 
         for (const Ball& b : balls)
@@ -234,47 +267,6 @@ int main()
             ballRepresentation.setOrigin(r, r);
             ballRepresentation.setPosition(b.x, b.y);
             renderer.draw(ballRepresentation, rs);
-
-			if (drawTraces)
-			{
-				sf::VertexArray trace(sf::Lines, 2);
-				trace[0].position = sf::Vector2f(b.x, b.y);
-				trace[1].position = sf::Vector2f(b.oldX, b.oldY);
-
-				trace[0].color = color;
-				trace[1].color = color;
-
-				traces.draw(trace);
-			}
-
-            /*if (!b.stableCount && speedDownCounter == speedDownFactor-1)
-            {
-                double r = b.r;
-                ballRepresentation.setRadius(r);
-                ballRepresentation.setOrigin(r, r);
-                ballRepresentation.setFillColor(sf::Color::Red);
-                traces.draw(ballRepresentation);
-
-                r -= 4;
-
-                ballRepresentation.setRadius(r);
-                ballRepresentation.setOrigin(r, r);
-                ballRepresentation.setFillColor(sf::Color::Black);
-                traces.draw(ballRepresentation);
-
-                r += 2;
-
-                sf::VertexArray circle(sf::LinesStrip, 20);
-                for (int i(0); i<20; i++)
-                {
-                    double pi = 3.14159;
-                    double x = b.x + r*sin(2*pi/19.0*i);
-                    double y = b.y + r*cos(2*pi/19.0*i);
-                    circle[i].position = sf::Vector2f(x, y);
-                }
-
-                traces.draw(circle);
-            }*/
         }
 
         sf::CircleShape stableIndicator(10);
