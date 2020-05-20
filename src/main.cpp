@@ -14,11 +14,13 @@ int WIN_HEIGHT = 1080;
 const uint32_t max_history = 100;
 
 
+
+
+
 struct Ball
 {
-    double x, y, oldX, oldY;
-    double vx, vy;
-    double r;
+	sf::Vector2f position, velocity;
+	double r;
 
 	std::vector<sf::Vector2f> position_history;
 	uint32_t current_idx;
@@ -31,11 +33,9 @@ struct Ball
 		, current_idx(0)
 	{}
 
-	Ball(double arg_x, double arg_y, double arg_r)
-		: x(arg_x)
-		, y(arg_y)
-		, vx(5)
-		, vy(-1)
+	Ball(double x, double y, double arg_r)
+		: position(x, y)
+		, velocity(5.0f, -1.0f)
 		, r(arg_r)
 		, position_history(max_history)
 		, current_idx(0)
@@ -45,10 +45,7 @@ struct Ball
 
     void save()
     {
-        oldX = x;
-        oldY = y;
-
-		position_history[current_idx] = sf::Vector2f(x, y);
+		position_history[current_idx] = position;
 		current_idx = (++current_idx) % max_history;
     }
 
@@ -74,40 +71,41 @@ bool update(std::vector<Ball>& balls, double speed)
 
 	const float dt = 0.008f;
 
+	const sf::Vector2f center_position(WIN_WIDTH * 0.5f, WIN_HEIGHT * 0.5f);
+
     for (int i(0); i<nBalls; i++)
 	{
 	    Ball& currentBall = balls[i];
 		// Attraction to center
-		currentBall.vx += 0.2f * (WIN_WIDTH/2-currentBall.x) * dt;
-		currentBall.vy += 0.2f * (WIN_HEIGHT/2-currentBall.y) * dt;
+		currentBall.velocity += 0.2f * (center_position - currentBall.position) * dt;
 
-		for (int k=0; k<nBalls; k++)
-		{
-		    if (k == i)
-                break;
-
+		for (int k=i+1; k<nBalls; k++) {
 		    Ball& collider = balls[k];
-			double dx = currentBall.x-collider.x;
-			double dy = currentBall.y-collider.y;
-			double dist = sqrt(dx*dx+dy*dy);
+			const sf::Vector2f collide_vec = currentBall.position - collider.position;
+			const float dist = sqrt(collide_vec.x*collide_vec.x + collide_vec.y*collide_vec.y);
 
-			double minDist = currentBall.r+collider.r;
+			const float minDist = currentBall.r+collider.r;
 
-			if (dist < minDist && dist)
-			{
+			if (dist < minDist && dist) {
 			    stable = false;
 
 			    currentBall.stable = false;
 			    collider.stable = false;
 
-				double rx = dx/dist;
-				double ry = dy/dist;
+				const sf::Vector2f collide_axe = collide_vec / dist;
 
-				currentBall.x += (minDist-dist)*rx;
-				currentBall.y += (minDist-dist)*ry;
+				currentBall.position += (minDist-dist) * collide_vec;
 
-				collider.x -= (minDist-dist)*rx;
-				collider.y -= (minDist-dist)*ry;
+				collider.position -= (minDist - dist) * collide_vec;
+
+				/*const float collider_vx = collider.vx;
+				const float collider_vy = collider.vy;
+
+				collider.vx += currentBall.vx;
+				collider.vy += currentBall.vy;
+
+				currentBall.vx += collider_vx;
+				currentBall.vy += collider_vy;*/
 			}
 		}
 	}
@@ -123,12 +121,11 @@ bool update(std::vector<Ball>& balls, double speed)
 	return stable;
 }
 
-void updatePos(std::vector<Ball>& balls, double& speedDownFactor, double& speedDownCounter)
+void updatePos(std::vector<Ball>& balls, float speedDownFactor, double& speedDownCounter)
 {
 	const float dt = 0.016f;
     for (Ball& currentBall : balls) {
-        currentBall.x += dt * currentBall.vx/speedDownFactor;
-        currentBall.y += dt * currentBall.vy/speedDownFactor;
+       currentBall.position += (dt / speedDownFactor) * currentBall.velocity;
     }
 
     speedDownCounter--;
@@ -137,9 +134,8 @@ void updatePos(std::vector<Ball>& balls, double& speedDownFactor, double& speedD
 const Ball* getBallAt(const sf::Vector2f& position, const std::vector<Ball>& balls)
 {
 	for (const Ball& ball : balls) {
-		const float vx = position.x - ball.x;
-		const float vy = position.y - ball.y;
-		const float dist = sqrt(vx*vx + vy * vy);
+		const sf::Vector2f v = position - ball.position;
+		const float dist = sqrt(v.x*v.x + v.y * v.y);
 		if (dist < ball.r) {
 			return &ball;
 		}
@@ -166,8 +162,8 @@ int main()
     bool drawTraces = true;
     bool synccEnable = true;
 
-    int nBalls = 80;
-    int maxSize = 42;
+    int nBalls = 10;
+    int maxSize = 100;
     int minSize = 2;
 
     std::ifstream infile;
@@ -177,9 +173,11 @@ int main()
     infile >> maxSize;
     infile >> minSize;
 
+	const float spawn_range_factor = 0.8f;
     std::vector<Ball> balls;
     for (int i(0); i<nBalls; i++)
-        balls.push_back(Ball(rand()%WIN_WIDTH, rand()%WIN_HEIGHT, rand()%(maxSize-minSize)+minSize));
+        balls.push_back(Ball(rand()%WIN_WIDTH*spawn_range_factor + WIN_WIDTH * spawn_range_factor * 0.5f * (1.0f - spawn_range_factor), 
+			                 rand()%WIN_HEIGHT*spawn_range_factor + WIN_HEIGHT * spawn_range_factor * 0.5f * (1.0f - spawn_range_factor), rand()%(maxSize-minSize)+minSize));
 
     sf::RenderTexture traces, blurTexture, renderer;
     blurTexture.create(WIN_WIDTH, WIN_HEIGHT);
@@ -221,7 +219,7 @@ int main()
 		}
 
 		if (focus) {
-			display_manager.setOffset(focus->x, focus->y);
+			display_manager.setOffset(focus->position.x, focus->position.y);
 		}
 
         bool stable = true;
@@ -263,9 +261,10 @@ int main()
                 r = b.r;
 
             sf::CircleShape ballRepresentation(r);
+			ballRepresentation.setPointCount(128);
             ballRepresentation.setFillColor(color);
             ballRepresentation.setOrigin(r, r);
-            ballRepresentation.setPosition(b.x, b.y);
+            ballRepresentation.setPosition(b.position.x, b.position.y);
             renderer.draw(ballRepresentation, rs);
         }
 
