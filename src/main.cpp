@@ -7,6 +7,7 @@
 
 #include "DynamicBlur.h"
 #include "display_manager.hpp"
+#include <SFML/Audio.hpp>
 
 
 int WIN_WIDTH = 1920;
@@ -33,7 +34,7 @@ sf::Vector2f normalize(const sf::Vector2f& v)
 struct Ball
 {
 	sf::Vector2f position, velocity;
-	double r;
+	float r;
 
 	std::vector<sf::Vector2f> position_history;
 	uint32_t current_idx;
@@ -41,10 +42,15 @@ struct Ball
     bool stable;
     int stableCount;
 
+	bool close_to_selected;
+	float last_dist_to_selected;
+	sf::Sound sound;
+
 	Ball()
 		: position_history(max_history)
 		, current_idx(0)
-	{}
+	{
+	}
 
 	Ball(double x, double y, double arg_r)
 		: position(x, y)
@@ -53,6 +59,9 @@ struct Ball
 		, position_history(max_history)
 		, current_idx(0)
     {
+		for (sf::Vector2f& pos : position_history) {
+			pos = sf::Vector2f(x, y);
+		}
         stableCount = 0;
     }
 
@@ -143,12 +152,23 @@ void updatePos(std::vector<Ball>& balls, float speedDownFactor, double& speedDow
     speedDownCounter--;
 }
 
-const Ball* getBallAt(const sf::Vector2f& position, const std::vector<Ball>& balls)
+void resetOtherThan(const Ball* selected, std::vector<Ball>& balls)
+{
+	for (Ball& ball : balls) {
+		if (&ball != selected) {
+			ball.close_to_selected = false;
+			ball.last_dist_to_selected = -1.0f;
+		}
+	}
+}
+
+const Ball* getBallAt(const sf::Vector2f& position, std::vector<Ball>& balls)
 {
 	for (const Ball& ball : balls) {
 		const sf::Vector2f v = position - ball.position;
 		const float dist = sqrt(v.x*v.x + v.y * v.y);
 		if (dist < ball.r) {
+			resetOtherThan(&ball, balls);
 			return &ball;
 		}
 	}
@@ -176,9 +196,9 @@ int main()
     bool drawTraces = true;
     bool synccEnable = true;
 
-    int nBalls = 20;
-    int maxSize = 100;
-    int minSize = 2;
+    int nBalls = 5;
+    int maxSize = 50;
+    int minSize = 20;
 
     std::ifstream infile;
     infile.open("config");
@@ -187,17 +207,31 @@ int main()
     infile >> maxSize;
     infile >> minSize;
 
+	sf::SoundBuffer buffer;
+	buffer.loadFromFile("../sounds/move_2.wav");
+	//buffer.loadFromFile("../sounds/move_deep.wav");
+
 	const float spawn_range_factor = 0.5f;
     std::vector<Ball> balls;
-    for (int i(0); i<nBalls; i++)
-        balls.push_back(Ball((rand()%WIN_WIDTH)*spawn_range_factor + WIN_WIDTH * 0.5f * (1.0f - spawn_range_factor), 
-			                 (rand()%WIN_HEIGHT)*spawn_range_factor + WIN_HEIGHT * 0.5f * (1.0f - spawn_range_factor),
-			                 50));
+	for (int i(0); i < nBalls; i++) {
+		balls.push_back(Ball((rand() % WIN_WIDTH)*spawn_range_factor + WIN_WIDTH * 0.5f * (1.0f - spawn_range_factor),
+			(rand() % WIN_HEIGHT)*spawn_range_factor + WIN_HEIGHT * 0.5f * (1.0f - spawn_range_factor),
+			rand() % (maxSize - minSize) + minSize));
 
-	for (int i(0); i < nBalls; i++)
+		balls.back().sound.setBuffer(buffer);
+		balls.back().sound.setLoop(true);
+	}
+
+	/*for (int i(0); i < 1; i++) {
 		balls.push_back(Ball(rand() % WIN_WIDTH*spawn_range_factor + WIN_WIDTH * spawn_range_factor * 0.5f * (1.0f - spawn_range_factor),
 			rand() % WIN_HEIGHT*spawn_range_factor + WIN_HEIGHT * spawn_range_factor * 0.5f * (1.0f - spawn_range_factor),
-			rand() % 20 + 2));
+			10));
+
+		balls.back().sound.setBuffer(buffer);
+		balls.back().sound.setLoop(true);
+	}*/
+
+	const float close_threshold = 50.0f;
 
     sf::RenderTexture traces, blurTexture, renderer;
     blurTexture.create(WIN_WIDTH, WIN_HEIGHT);
@@ -222,51 +256,90 @@ int main()
 	const Ball* focus = nullptr;
 
 	uint32_t ok_count = 0;
+
+	sf::Clock clock;
  
-    while (window.isOpen())
-    {
+    while (window.isOpen()) {
         sf::Vector2i mousePos = sf::Mouse::getPosition(window);
 
 		std::vector<sf::Event> events = display_manager.processEvents();
 		const sf::RenderStates rs = display_manager.getRenderStates();
 
-        if (waitingSpeedFactor != speedDownFactorGoal) {
-            waitingSpeedFactor += speedDownFactorGoal-waitingSpeedFactor;
-        }
+		if (clock.getElapsedTime().asSeconds() > 10.0f)
+		{
 
-		if (display_manager.clic) {
-			focus = getBallAt(display_manager.getWorldMousePosition(), balls);
-			display_manager.clic = false;
-		}
-
-		if (focus) {
-			display_manager.setOffset(focus->position.x, focus->position.y);
-		}
-
-        bool stable = true;
-        if (!speedDownCounter) {
-            int nBalls = balls.size();
-            for (Ball& ball : balls) {
-                ball.stable = true;
-                ball.save();
-            }
-
-            stable = update(balls, 1);
-			if (!stable && ok_count < 200) {
-				ok_count = 0;
-			}
-			
-			if (stable) {
-				++ok_count;
+			if (waitingSpeedFactor != speedDownFactorGoal) {
+				waitingSpeedFactor += speedDownFactorGoal - waitingSpeedFactor;
 			}
 
-            if (waitingSpeedFactor) {
-                speedDownFactor = waitingSpeedFactor;
-            }
-            speedDownCounter = speedDownFactor;
-        }
+			if (display_manager.clic) {
+				focus = getBallAt(display_manager.getWorldMousePosition(), balls);
+				display_manager.clic = false;
+			}
 
-        updatePos(balls, speedDownFactor, speedDownCounter);
+			if (focus) {
+				display_manager.setOffset(focus->position.x, focus->position.y);
+			}
+
+			bool stable = true;
+			if (!speedDownCounter) {
+				int nBalls = balls.size();
+				for (Ball& ball : balls) {
+					ball.stable = true;
+					ball.save();
+				}
+
+				stable = update(balls, 1);
+				if (!stable && ok_count < 200) {
+					ok_count = 0;
+				}
+
+				if (stable) {
+					++ok_count;
+				}
+
+				if (waitingSpeedFactor) {
+					speedDownFactor = waitingSpeedFactor;
+				}
+				speedDownCounter = speedDownFactor;
+			}
+
+			updatePos(balls, speedDownFactor, speedDownCounter);
+
+			if (focus) {
+				for (Ball& b : balls) {
+					if (&b == focus) {
+						continue;
+					}
+
+					const float dist_to_selected = length(b.position - focus->position);
+
+					if (dist_to_selected - b.r < close_threshold) {
+						if (b.last_dist_to_selected != -1.0f) {
+							const float proximity_speed = b.last_dist_to_selected / dist_to_selected;
+							if (!b.close_to_selected) {
+								b.close_to_selected = true;
+								b.sound.play();
+							}
+
+							const float speed_factor = std::pow(proximity_speed, 2.0f);
+							const float min_radius = focus->r + b.r;
+							const float volume = std::min(80.0f, 20.0f * (1.0f - dist_to_selected / (close_threshold + b.r)));
+							b.sound.setVolume(speed_factor * volume);
+							b.sound.setPitch(speed_factor + focus->r / float(b.r));
+						}
+					}
+					else {
+						if (b.close_to_selected) {
+							b.sound.pause();
+						}
+						b.close_to_selected = false;
+					}
+
+					b.last_dist_to_selected = dist_to_selected;
+				}
+			}
+		}
 
         window.clear(sf::Color::Black);
 
