@@ -5,7 +5,6 @@
 #include <iostream>
 #include <fstream>
 
-#include "DynamicBlur.h"
 #include "display_manager.hpp"
 #include <SFML/Audio.hpp>
 
