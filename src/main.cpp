@@ -100,7 +100,6 @@ bool update(std::vector<Ball>& balls, double speed)
 		// Attraction to center
 		const sf::Vector2f to_center = center_position - current_ball.position;
 		const float dist_to_center = length(to_center);
-		//current_ball.velocity += (attraction_force / std::max(attractor_threshold, dist_to_center) * dt) * normalize(to_center);
 		current_ball.velocity += attraction_force_bug * to_center;
 
 		for (int k=i+1; k<nBalls; k++) {
@@ -120,12 +119,6 @@ bool update(std::vector<Ball>& balls, double speed)
 
 				current_ball.position += 0.5f * (minDist - dist) * collide_axe;
 				collider.position -= 0.5f * (minDist - dist) * collide_axe;
-
-				/*const float restitution_factor = 0.0125f;
-				const sf::Vector2f absorbed_v1 = current_ball.velocity * dot(normalize(current_ball.velocity), -collide_axe);
-				const sf::Vector2f absorbed_v2 = collider.velocity    * dot(normalize(collider.velocity),     collide_axe);
-				current_ball.velocity += -restitution_factor * absorbed_v1;
-				collider.velocity     += -restitution_factor * absorbed_v2;*/
 			}
 		}
 	}
