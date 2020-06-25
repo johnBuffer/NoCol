@@ -6,7 +6,6 @@
 #include <fstream>
 
 #include "display_manager.hpp"
-#include <SFML/Audio.hpp>
 
 
 int WIN_WIDTH = 1920;
@@ -41,19 +40,15 @@ struct Ball
     bool stable;
     int stableCount;
 
-	bool close_to_selected;
-	float last_dist_to_selected;
-	sf::Sound sound;
-
 	Ball()
 		: position_history(max_history)
 		, current_idx(0)
 	{
 	}
 
-	Ball(double x, double y, double arg_r)
+	Ball(float x, float y, float arg_r)
 		: position(x, y)
-		, velocity(rand() % 8 - 4, rand() % 8 - 4)
+		, velocity(static_cast<float>(rand() % 8 - 4), static_cast<float>(rand() % 8 - 4))
 		, r(arg_r)
 		, position_history(max_history)
 		, current_idx(0)
@@ -77,18 +72,18 @@ struct Ball
 			const uint32_t actual_idx = (i + current_idx) % max_history;
 			const float ratio = i / float(max_history);
 			va[i].position = position_history[actual_idx];
-			va[i].color = sf::Color(0, 255 * ratio, 0);
+			va[i].color = sf::Color(0, static_cast<sf::Uint8>(255 * ratio), 0);
 		}
 
 		return va;
 	}
 };
 
-bool update(std::vector<Ball>& balls, double speed)
+bool update(std::vector<Ball>& balls, float speed)
 {
     bool stable = true;
 
-    const uint32_t nBalls = balls.size();
+    const uint32_t nBalls = static_cast<uint32_t>(balls.size());
 	const float dt = 0.008f;
 	const float attraction_force = 50.0f;
 	const float attraction_force_bug = 0.002f;
@@ -102,7 +97,7 @@ bool update(std::vector<Ball>& balls, double speed)
 		const float dist_to_center = length(to_center);
 		current_ball.velocity += attraction_force_bug * to_center;
 
-		for (int k=i+1; k<nBalls; k++) {
+		for (uint32_t k=i+1; k<nBalls; k++) {
 		    Ball& collider = balls[k];
 			const sf::Vector2f collide_vec = current_ball.position - collider.position;
 			const float dist = sqrt(collide_vec.x*collide_vec.x + collide_vec.y*collide_vec.y);
@@ -123,7 +118,7 @@ bool update(std::vector<Ball>& balls, double speed)
 		}
 	}
 
-	for (int i(0); i<nBalls; i++)
+	for (uint32_t i(0); i<nBalls; i++)
     {
         if(balls[i].stable)
             balls[i].stableCount++;
@@ -134,7 +129,7 @@ bool update(std::vector<Ball>& balls, double speed)
 	return stable;
 }
 
-void updatePos(std::vector<Ball>& balls, float speedDownFactor, double& speedDownCounter)
+void updatePos(std::vector<Ball>& balls, float speedDownFactor, float& speedDownCounter)
 {
 	const float dt = 0.016f;
     for (Ball& currentBall : balls) {
@@ -144,23 +139,12 @@ void updatePos(std::vector<Ball>& balls, float speedDownFactor, double& speedDow
     speedDownCounter--;
 }
 
-void resetOtherThan(const Ball* selected, std::vector<Ball>& balls)
-{
-	for (Ball& ball : balls) {
-		if (&ball != selected) {
-			ball.close_to_selected = false;
-			ball.last_dist_to_selected = -1.0f;
-		}
-	}
-}
-
 const Ball* getBallAt(const sf::Vector2f& position, std::vector<Ball>& balls)
 {
 	for (const Ball& ball : balls) {
 		const sf::Vector2f v = position - ball.position;
 		const float dist = sqrt(v.x*v.x + v.y * v.y);
 		if (dist < ball.r) {
-			resetOtherThan(&ball, balls);
 			return &ball;
 		}
 	}
@@ -171,7 +155,7 @@ const Ball* getBallAt(const sf::Vector2f& position, std::vector<Ball>& balls)
 
 int main()
 {
-	const uint64_t seed = time(0);
+	const uint32_t seed = static_cast<uint32_t>(time(0));
     srand(seed);
 	std::cout << seed << std::endl;
     sf::ContextSettings settings;
@@ -179,10 +163,10 @@ int main()
     sf::RenderWindow window(sf::VideoMode(WIN_WIDTH, WIN_HEIGHT), "NoCol", sf::Style::Fullscreen, settings);
     window.setVerticalSyncEnabled(true);
 
-    double speedDownFactor = 1;
-    double speedDownCounter = 1;
-    double waitingSpeedFactor = 1;
-    double speedDownFactorGoal = 1;
+    float speedDownFactor = 1;
+    float speedDownCounter = 1;
+    float waitingSpeedFactor = 1;
+    float speedDownFactorGoal = 1;
     int iterations = 0;
 
     bool drawTraces = true;
@@ -199,10 +183,6 @@ int main()
     infile >> maxSize;
     infile >> minSize;
 
-	sf::SoundBuffer buffer;
-	buffer.loadFromFile("../sounds/move_2.wav");
-	//buffer.loadFromFile("../sounds/move_deep.wav");
-
 	const float spawn_range_factor = 0.5f;
     std::vector<Ball> balls;
 	for (int i(0); i < nBalls; i++) {
@@ -215,13 +195,10 @@ int main()
 		const float speed = ((rand() % 2) ? 1.0f : -1.0f) * (rand()%20 + 150);
 
 		balls.push_back(Ball(start_x + WIN_WIDTH * 0.5f, start_y + WIN_HEIGHT * 0.5f,
-			rand() % (maxSize - minSize) + minSize));
+			static_cast<float>(rand() % (maxSize - minSize) + minSize)));
 
 		balls.back().velocity.x = -sin(angle) * speed;
 		balls.back().velocity.y = cos(angle) * speed;
-
-		balls.back().sound.setBuffer(buffer);
-		balls.back().sound.setLoop(true);
 	}
 
 	const float close_threshold = 50.0f;
@@ -238,7 +215,7 @@ int main()
 	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::A, [&](sfev::CstEv) { drawTraces = !drawTraces; });
 	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::C, [&](sfev::CstEv) { traces.clear(); });
 	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::Space, [&](sfev::CstEv) {  
-		speedDownFactorGoal = speedDownFactor == 1 ? 10 : 1;
+		speedDownFactorGoal = speedDownFactor == 1 ? 10.0f : 1.0f;
 	});
 	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::Escape, [&](sfev::CstEv) {window.close(); });
 	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::E, [&](sfev::CstEv) { 
@@ -271,7 +248,6 @@ int main()
 
 		bool stable = true;
 		if (!speedDownCounter) {
-			int nBalls = balls.size();
 			for (Ball& ball : balls) {
 				ball.stable = true;
 				ball.save();
@@ -294,40 +270,6 @@ int main()
 
 		updatePos(balls, speedDownFactor, speedDownCounter);
 
-		if (focus) {
-			for (Ball& b : balls) {
-				if (&b == focus) {
-					continue;
-				}
-
-				const float dist_to_selected = length(b.position - focus->position);
-
-				if (dist_to_selected - b.r < close_threshold) {
-					if (b.last_dist_to_selected != -1.0f) {
-						const float proximity_speed = b.last_dist_to_selected / dist_to_selected;
-						if (!b.close_to_selected) {
-							b.close_to_selected = true;
-							b.sound.play();
-						}
-
-						const float speed_factor = std::pow(proximity_speed, 2.0f);
-						const float min_radius = focus->r + b.r;
-						const float volume = std::min(80.0f, 20.0f * (1.0f - dist_to_selected / (close_threshold + b.r)));
-						b.sound.setVolume(speed_factor * volume);
-						b.sound.setPitch(speed_factor + focus->r / float(b.r));
-					}
-				}
-				else {
-					if (b.close_to_selected) {
-						b.sound.pause();
-					}
-					b.close_to_selected = false;
-				}
-
-				b.last_dist_to_selected = dist_to_selected;
-			}
-		}
-
         window.clear(sf::Color::Black);
 
 		sf::RenderStates rs_traces = rs;
@@ -343,7 +285,7 @@ int main()
         {
             int c = b.stableCount > 255 ? 255 : b.stableCount;
             sf::Color color = ok_count >= 200 ? sf::Color::Green : sf::Color(255 - c, c, 0);
-            double r = b.r;
+            float r = b.r;
 
             if (speedDownFactor > 1)
                 r = b.r;

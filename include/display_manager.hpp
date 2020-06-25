@@ -44,12 +44,12 @@ public:
 
 	sf::Vector2f getClicPosition() const
 	{
-		return sf::Vector2f(m_clic_position.x, m_clic_position.y);
+		return sf::Vector2f(static_cast<float>(m_clic_position.x), static_cast<float>(m_clic_position.y));
 	}
 
 	sf::Vector2f getWorldMousePosition() const
 	{
-		return displayCoordToWorldCoord(sf::Vector2f(m_mouse_position.x, m_mouse_position.y));
+		return displayCoordToWorldCoord(sf::Vector2f(static_cast<float>(m_mouse_position.x), static_cast<float>(m_mouse_position.y)));
 	}
 
 	sfev::EventManager event_manager;
