@@ -1,7 +1,7 @@
 #pragma once
 
 #include <SFML/Graphics.hpp>
-#include <event_manager.hpp>
+#include "event_manager.hpp"
 
 
 class DisplayManager

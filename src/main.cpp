@@ -90,8 +90,8 @@ bool update(std::vector<Ball>& balls, double speed)
 
     const uint32_t nBalls = balls.size();
 	const float dt = 0.008f;
-	const float attraction_force = 5000.0f;
-	const float attraction_force_bug = 0.02f;
+	const float attraction_force = 50.0f;
+	const float attraction_force_bug = 0.002f;
 	const sf::Vector2f center_position(WIN_WIDTH * 0.5f, WIN_HEIGHT * 0.5f);
 	const float attractor_threshold = 50.0f;
 
@@ -188,9 +188,9 @@ int main()
     bool drawTraces = true;
     bool synccEnable = true;
 
-    int nBalls = 5;
-    int maxSize = 50;
-    int minSize = 20;
+    int nBalls = 80;
+    int maxSize = 12;
+    int minSize = 5;
 
     std::ifstream infile;
     infile.open("config");
@@ -206,22 +206,23 @@ int main()
 	const float spawn_range_factor = 0.5f;
     std::vector<Ball> balls;
 	for (int i(0); i < nBalls; i++) {
-		balls.push_back(Ball((rand() % WIN_WIDTH)*spawn_range_factor + WIN_WIDTH * 0.5f * (1.0f - spawn_range_factor),
-			(rand() % WIN_HEIGHT)*spawn_range_factor + WIN_HEIGHT * 0.5f * (1.0f - spawn_range_factor),
+		const float angle = (rand() % 10000) / 10000.0f * 2.0f * 3.141592653f;
+		const float radius = 450.0f;
+
+		const float start_x = radius * cos(angle);
+		const float start_y = radius * sin(angle);
+
+		const float speed = ((rand() % 2) ? 1.0f : -1.0f) * (rand()%20 + 150);
+
+		balls.push_back(Ball(start_x + WIN_WIDTH * 0.5f, start_y + WIN_HEIGHT * 0.5f,
 			rand() % (maxSize - minSize) + minSize));
+
+		balls.back().velocity.x = -sin(angle) * speed;
+		balls.back().velocity.y = cos(angle) * speed;
 
 		balls.back().sound.setBuffer(buffer);
 		balls.back().sound.setLoop(true);
 	}
-
-	/*for (int i(0); i < 1; i++) {
-		balls.push_back(Ball(rand() % WIN_WIDTH*spawn_range_factor + WIN_WIDTH * spawn_range_factor * 0.5f * (1.0f - spawn_range_factor),
-			rand() % WIN_HEIGHT*spawn_range_factor + WIN_HEIGHT * spawn_range_factor * 0.5f * (1.0f - spawn_range_factor),
-			10));
-
-		balls.back().sound.setBuffer(buffer);
-		balls.back().sound.setLoop(true);
-	}*/
 
 	const float close_threshold = 50.0f;
 
@@ -248,8 +249,6 @@ int main()
 	const Ball* focus = nullptr;
 
 	uint32_t ok_count = 0;
-
-	sf::Clock clock;
  
     while (window.isOpen()) {
         sf::Vector2i mousePos = sf::Mouse::getPosition(window);
@@ -257,79 +256,75 @@ int main()
 		std::vector<sf::Event> events = display_manager.processEvents();
 		const sf::RenderStates rs = display_manager.getRenderStates();
 
-		if (clock.getElapsedTime().asSeconds() > 10.0f)
-		{
+		if (waitingSpeedFactor != speedDownFactorGoal) {
+			waitingSpeedFactor += speedDownFactorGoal - waitingSpeedFactor;
+		}
 
-			if (waitingSpeedFactor != speedDownFactorGoal) {
-				waitingSpeedFactor += speedDownFactorGoal - waitingSpeedFactor;
+		if (display_manager.clic) {
+			focus = getBallAt(display_manager.getWorldMousePosition(), balls);
+			display_manager.clic = false;
+		}
+
+		if (focus) {
+			display_manager.setOffset(focus->position.x, focus->position.y);
+		}
+
+		bool stable = true;
+		if (!speedDownCounter) {
+			int nBalls = balls.size();
+			for (Ball& ball : balls) {
+				ball.stable = true;
+				ball.save();
 			}
 
-			if (display_manager.clic) {
-				focus = getBallAt(display_manager.getWorldMousePosition(), balls);
-				display_manager.clic = false;
+			stable = update(balls, 1);
+			if (!stable && ok_count < 200) {
+				ok_count = 0;
 			}
 
-			if (focus) {
-				display_manager.setOffset(focus->position.x, focus->position.y);
+			if (stable) {
+				++ok_count;
 			}
 
-			bool stable = true;
-			if (!speedDownCounter) {
-				int nBalls = balls.size();
-				for (Ball& ball : balls) {
-					ball.stable = true;
-					ball.save();
-				}
-
-				stable = update(balls, 1);
-				if (!stable && ok_count < 200) {
-					ok_count = 0;
-				}
-
-				if (stable) {
-					++ok_count;
-				}
-
-				if (waitingSpeedFactor) {
-					speedDownFactor = waitingSpeedFactor;
-				}
-				speedDownCounter = speedDownFactor;
+			if (waitingSpeedFactor) {
+				speedDownFactor = waitingSpeedFactor;
 			}
+			speedDownCounter = speedDownFactor;
+		}
 
-			updatePos(balls, speedDownFactor, speedDownCounter);
+		updatePos(balls, speedDownFactor, speedDownCounter);
 
-			if (focus) {
-				for (Ball& b : balls) {
-					if (&b == focus) {
-						continue;
-					}
+		if (focus) {
+			for (Ball& b : balls) {
+				if (&b == focus) {
+					continue;
+				}
 
-					const float dist_to_selected = length(b.position - focus->position);
+				const float dist_to_selected = length(b.position - focus->position);
 
-					if (dist_to_selected - b.r < close_threshold) {
-						if (b.last_dist_to_selected != -1.0f) {
-							const float proximity_speed = b.last_dist_to_selected / dist_to_selected;
-							if (!b.close_to_selected) {
-								b.close_to_selected = true;
-								b.sound.play();
-							}
-
-							const float speed_factor = std::pow(proximity_speed, 2.0f);
-							const float min_radius = focus->r + b.r;
-							const float volume = std::min(80.0f, 20.0f * (1.0f - dist_to_selected / (close_threshold + b.r)));
-							b.sound.setVolume(speed_factor * volume);
-							b.sound.setPitch(speed_factor + focus->r / float(b.r));
+				if (dist_to_selected - b.r < close_threshold) {
+					if (b.last_dist_to_selected != -1.0f) {
+						const float proximity_speed = b.last_dist_to_selected / dist_to_selected;
+						if (!b.close_to_selected) {
+							b.close_to_selected = true;
+							b.sound.play();
 						}
-					}
-					else {
-						if (b.close_to_selected) {
-							b.sound.pause();
-						}
-						b.close_to_selected = false;
-					}
 
-					b.last_dist_to_selected = dist_to_selected;
+						const float speed_factor = std::pow(proximity_speed, 2.0f);
+						const float min_radius = focus->r + b.r;
+						const float volume = std::min(80.0f, 20.0f * (1.0f - dist_to_selected / (close_threshold + b.r)));
+						b.sound.setVolume(speed_factor * volume);
+						b.sound.setPitch(speed_factor + focus->r / float(b.r));
+					}
 				}
+				else {
+					if (b.close_to_selected) {
+						b.sound.pause();
+					}
+					b.close_to_selected = false;
+				}
+
+				b.last_dist_to_selected = dist_to_selected;
 			}
 		}
 
