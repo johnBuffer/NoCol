@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.10)
 set(PROJECT_NAME NoCol)
 project(${PROJECT_NAME} VERSION 1.0.0 LANGUAGES CXX)
 
+set (CMAKE_CXX_STANDARD 11)
 set(SFML_DIR "" CACHE PATH "SFML lib path")
 set(SFML_LIB_DIR "${SFML_DIR}/lib")
 set(SFML_INC_DIR "${SFML_DIR}/include")
