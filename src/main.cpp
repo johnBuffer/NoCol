@@ -12,6 +12,9 @@ int WIN_WIDTH = 1920;
 int WIN_HEIGHT = 1080;
 const uint32_t max_history = 100;
 
+//const sf::Vector3f stable_color(47, 100, 175);
+const sf::Vector3f stable_color(0, 255, 0);
+
 
 float dot(const sf::Vector2f& v1, const sf::Vector2f& v2)
 {
@@ -72,7 +75,8 @@ struct Ball
 			const uint32_t actual_idx = (i + current_idx) % max_history;
 			const float ratio = i / float(max_history);
 			va[i].position = position_history[actual_idx];
-			va[i].color = sf::Color(0, static_cast<sf::Uint8>(255 * ratio), 0);
+			const sf::Vector3f color = ratio * stable_color;
+			va[i].color = sf::Color(static_cast<sf::Uint8>(color.x), static_cast<sf::Uint8>(color.y), static_cast<sf::Uint8>(color.z));
 		}
 
 		return va;
@@ -86,7 +90,7 @@ bool update(std::vector<Ball>& balls, float speed)
     const uint32_t nBalls = static_cast<uint32_t>(balls.size());
 	const float dt = 0.008f;
 	const float attraction_force = 50.0f;
-	const float attraction_force_bug = 0.002f;
+	const float attraction_force_bug = 0.01f;
 	const sf::Vector2f center_position(WIN_WIDTH * 0.5f, WIN_HEIGHT * 0.5f);
 	const float attractor_threshold = 50.0f;
 
@@ -172,8 +176,8 @@ int main()
     bool drawTraces = true;
     bool synccEnable = true;
 
-    int nBalls = 80;
-    int maxSize = 12;
+    int nBalls = 20;
+    int maxSize = 70;
     int minSize = 5;
 
     std::ifstream infile;
@@ -187,21 +191,19 @@ int main()
     std::vector<Ball> balls;
 	for (int i(0); i < nBalls; i++) {
 		const float angle = (rand() % 10000) / 10000.0f * 2.0f * 3.141592653f;
-		const float radius = 450.0f;
+		const float radius = 350.0f;
 
 		const float start_x = radius * cos(angle);
 		const float start_y = radius * sin(angle);
 
-		const float speed = ((rand() % 2) ? 1.0f : -1.0f) * (rand()%20 + 150);
+		//const float speed = ((rand() % 2) ? 1.0f : -1.0f) * (rand()%20 + 150);
 
 		balls.push_back(Ball(start_x + WIN_WIDTH * 0.5f, start_y + WIN_HEIGHT * 0.5f,
 			static_cast<float>(rand() % (maxSize - minSize) + minSize)));
 
-		balls.back().velocity.x = -sin(angle) * speed;
-		balls.back().velocity.y = cos(angle) * speed;
+		//balls.back().velocity.x = -sin(angle) * speed;
+		//balls.back().velocity.y = cos(angle) * speed;
 	}
-
-	const float close_threshold = 50.0f;
 
     sf::RenderTexture traces, blurTexture, renderer;
     blurTexture.create(WIN_WIDTH, WIN_HEIGHT);
@@ -215,7 +217,7 @@ int main()
 	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::A, [&](sfev::CstEv) { drawTraces = !drawTraces; });
 	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::C, [&](sfev::CstEv) { traces.clear(); });
 	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::Space, [&](sfev::CstEv) {  
-		speedDownFactorGoal = speedDownFactor == 1 ? 10.0f : 1.0f;
+		speedDownFactorGoal = speedDownFactor == 1 ? 2.0f : 1.0f;
 	});
 	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::Escape, [&](sfev::CstEv) {window.close(); });
 	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::E, [&](sfev::CstEv) { 
@@ -281,22 +283,37 @@ int main()
 			}
 		}
 
+		sf::Vector2f center_of_mass(0.0f, 0.0f);
         for (const Ball& b : balls)
         {
+			const sf::Vector3f unstable_color(255, 0, 0);
+			const float stable_ratio = (ok_count > 199) ? 1.0f : std::min(1.0f, b.stableCount / 255.0f);
+			const sf::Vector3f vec_color = stable_ratio * stable_color + (1.0f - stable_ratio) * unstable_color;
+
             int c = b.stableCount > 255 ? 255 : b.stableCount;
-            sf::Color color = ok_count >= 200 ? sf::Color::Green : sf::Color(255 - c, c, 0);
+			sf::Color color(static_cast<sf::Uint8>(vec_color.x), static_cast<sf::Uint8>(vec_color.y), static_cast<sf::Uint8>(vec_color.z));
             float r = b.r;
 
             if (speedDownFactor > 1)
                 r = b.r;
 
+			center_of_mass += b.position;
+
             sf::CircleShape ballRepresentation(r);
 			ballRepresentation.setPointCount(128);
             ballRepresentation.setFillColor(color);
             ballRepresentation.setOrigin(r, r);
-            ballRepresentation.setPosition(b.position.x, b.position.y);
+            ballRepresentation.setPosition(b.position);
 			window.draw(ballRepresentation, rs);
         }
+		center_of_mass /= float(balls.size());
+
+		const float com_r = 4.0f;
+		/*sf::CircleShape com_representation(com_r);
+		com_representation.setFillColor(sf::Color::Cyan);
+		com_representation.setOrigin(com_r, com_r);
+		com_representation.setPosition(center_of_mass);
+		window.draw(com_representation, rs);*/
 
 		window.display();
 
