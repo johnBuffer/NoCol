@@ -6,13 +6,13 @@
 #include <fstream>
 
 #include "display_manager.hpp"
+#include "number_generator.hpp"
 
 
 int WIN_WIDTH = 1920;
 int WIN_HEIGHT = 1080;
 const uint32_t max_history = 100;
 
-//const sf::Vector3f stable_color(47, 100, 175);
 const sf::Vector3f stable_color(0, 255, 0);
 
 
@@ -157,14 +157,44 @@ const Ball* getBallAt(const sf::Vector2f& position, std::vector<Ball>& balls)
 }
 
 
+struct Conf
+{
+	uint32_t win_width = 1920;
+	uint32_t win_height = 1080;
+	uint32_t objects_count = 20;
+	uint32_t min_size = 5;
+	uint32_t max_size = 70;
+};
+
+
+Conf loadUserConf()
+{
+	Conf conf;
+	std::ifstream conf_file("conf.txt");
+	if (conf_file) {
+		conf_file >> conf.win_width;
+		conf_file >> conf.win_height;
+		conf_file >> conf.objects_count;
+		conf_file >> conf.min_size;
+		conf_file >> conf.max_size;
+	}
+	else {
+		std::cout << "Couldn't find 'conf.txt', loading default" << std::endl;
+	}
+
+	return conf;
+}
+
+
 int main()
 {
-	const uint32_t seed = static_cast<uint32_t>(time(0));
-    srand(seed);
-	std::cout << seed << std::endl;
+	Conf conf = loadUserConf();
+	WIN_WIDTH = conf.win_width;
+	WIN_HEIGHT = conf.win_height;
+
     sf::ContextSettings settings;
     settings.antialiasingLevel = 8;
-    sf::RenderWindow window(sf::VideoMode(WIN_WIDTH, WIN_HEIGHT), "NoCol", sf::Style::Fullscreen, settings);
+    sf::RenderWindow window(sf::VideoMode(conf.win_width, conf.win_height), "NoCol", sf::Style::Fullscreen, settings);
     window.setVerticalSyncEnabled(true);
 
     float speedDownFactor = 1;
@@ -176,9 +206,9 @@ int main()
     bool drawTraces = true;
     bool synccEnable = true;
 
-    int nBalls = 20;
-    int maxSize = 70;
-    int minSize = 5;
+    int nBalls = conf.objects_count;
+    int maxSize = conf.max_size;
+    int minSize = conf.min_size;
 
     std::ifstream infile;
     infile.open("config");
@@ -190,19 +220,14 @@ int main()
 	const float spawn_range_factor = 0.5f;
     std::vector<Ball> balls;
 	for (int i(0); i < nBalls; i++) {
-		const float angle = (rand() % 10000) / 10000.0f * 2.0f * 3.141592653f;
+		const float angle = RNGf::getUnder(2.0f * 3.141592653f);
 		const float radius = 350.0f;
 
 		const float start_x = radius * cos(angle);
 		const float start_y = radius * sin(angle);
 
-		//const float speed = ((rand() % 2) ? 1.0f : -1.0f) * (rand()%20 + 150);
-
 		balls.push_back(Ball(start_x + WIN_WIDTH * 0.5f, start_y + WIN_HEIGHT * 0.5f,
-			static_cast<float>(rand() % (maxSize - minSize) + minSize)));
-
-		//balls.back().velocity.x = -sin(angle) * speed;
-		//balls.back().velocity.y = cos(angle) * speed;
+			RNGf::getRange(static_cast<float>(minSize), static_cast<float>(maxSize))));
 	}
 
     sf::RenderTexture traces, blurTexture, renderer;
@@ -217,7 +242,7 @@ int main()
 	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::A, [&](sfev::CstEv) { drawTraces = !drawTraces; });
 	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::C, [&](sfev::CstEv) { traces.clear(); });
 	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::Space, [&](sfev::CstEv) {  
-		speedDownFactorGoal = speedDownFactor == 1 ? 2.0f : 1.0f;
+		speedDownFactorGoal = speedDownFactor == 1 ? 10.0f : 1.0f;
 	});
 	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::Escape, [&](sfev::CstEv) {window.close(); });
 	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::E, [&](sfev::CstEv) { 
@@ -300,7 +325,7 @@ int main()
 			center_of_mass += b.position;
 
             sf::CircleShape ballRepresentation(r);
-			ballRepresentation.setPointCount(128);
+			ballRepresentation.setPointCount(64);
             ballRepresentation.setFillColor(color);
             ballRepresentation.setOrigin(r, r);
             ballRepresentation.setPosition(b.position);
