@@ -210,13 +210,6 @@ int main()
     int maxSize = conf.max_size;
     int minSize = conf.min_size;
 
-    std::ifstream infile;
-    infile.open("config");
-    std::cout << "Loading config" << std::endl;
-    infile >> nBalls;
-    infile >> maxSize;
-    infile >> minSize;
-
 	const float spawn_range_factor = 0.5f;
     std::vector<Ball> balls;
 	for (int i(0); i < nBalls; i++) {
