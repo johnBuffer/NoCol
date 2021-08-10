@@ -5,8 +5,10 @@
 #include <iostream>
 #include <fstream>
 
-#include "display_manager.hpp"
+#include "viewport_handler.hpp"
 #include "number_generator.hpp"
+#include "event_manager.hpp"
+#include "simulation.hpp"
 
 
 int WIN_WIDTH = 1920;
@@ -30,132 +32,6 @@ sf::Vector2f normalize(const sf::Vector2f& v)
 {
 	return v / length(v);
 }
-
-
-struct Ball
-{
-	sf::Vector2f position, velocity;
-	float r;
-
-	std::vector<sf::Vector2f> position_history;
-	uint32_t current_idx;
-
-    bool stable;
-    int stableCount;
-
-	Ball()
-		: position_history(max_history)
-		, current_idx(0)
-	{
-	}
-
-	Ball(float x, float y, float arg_r)
-		: position(x, y)
-		, velocity(static_cast<float>(rand() % 8 - 4), static_cast<float>(rand() % 8 - 4))
-		, r(arg_r)
-		, position_history(max_history)
-		, current_idx(0)
-    {
-		for (sf::Vector2f& pos : position_history) {
-			pos = sf::Vector2f(x, y);
-		}
-        stableCount = 0;
-    }
-
-    void save()
-    {
-		position_history[current_idx] = position;
-		current_idx = (++current_idx) % max_history;
-    }
-
-	sf::VertexArray getVA() const
-	{
-		sf::VertexArray va(sf::LineStrip, max_history);
-		for (uint32_t i(0); i < max_history; ++i) {
-			const uint32_t actual_idx = (i + current_idx) % max_history;
-			const float ratio = i / float(max_history);
-			va[i].position = position_history[actual_idx];
-			const sf::Vector3f color = ratio * stable_color;
-			va[i].color = sf::Color(static_cast<sf::Uint8>(color.x), static_cast<sf::Uint8>(color.y), static_cast<sf::Uint8>(color.z));
-		}
-
-		return va;
-	}
-};
-
-bool update(std::vector<Ball>& balls, float speed)
-{
-    bool stable = true;
-
-    const uint32_t nBalls = static_cast<uint32_t>(balls.size());
-	const float dt = 0.008f;
-	const float attraction_force = 50.0f;
-	const float attraction_force_bug = 0.01f;
-	const sf::Vector2f center_position(WIN_WIDTH * 0.5f, WIN_HEIGHT * 0.5f);
-	const float attractor_threshold = 50.0f;
-
-    for (uint32_t i(0); i<nBalls; i++) {
-	    Ball& current_ball = balls[i];
-		// Attraction to center
-		const sf::Vector2f to_center = center_position - current_ball.position;
-		const float dist_to_center = length(to_center);
-		current_ball.velocity += attraction_force_bug * to_center;
-
-		for (uint32_t k=i+1; k<nBalls; k++) {
-		    Ball& collider = balls[k];
-			const sf::Vector2f collide_vec = current_ball.position - collider.position;
-			const float dist = sqrt(collide_vec.x*collide_vec.x + collide_vec.y*collide_vec.y);
-
-			const float minDist = current_ball.r+collider.r;
-
-			if (dist < minDist) {
-			    stable = false;
-
-			    current_ball.stable = false;
-			    collider.stable = false;
-
-				const sf::Vector2f collide_axe = collide_vec / dist;
-
-				current_ball.position += 0.5f * (minDist - dist) * collide_axe;
-				collider.position -= 0.5f * (minDist - dist) * collide_axe;
-			}
-		}
-	}
-
-	for (uint32_t i(0); i<nBalls; i++)
-    {
-        if(balls[i].stable)
-            balls[i].stableCount++;
-        else
-            balls[i].stableCount = 0;
-    }
-
-	return stable;
-}
-
-void updatePos(std::vector<Ball>& balls, float speedDownFactor, float& speedDownCounter)
-{
-	const float dt = 0.016f;
-    for (Ball& currentBall : balls) {
-       currentBall.position += (dt / speedDownFactor) * currentBall.velocity;
-    }
-
-    speedDownCounter--;
-}
-
-const Ball* getBallAt(const sf::Vector2f& position, std::vector<Ball>& balls)
-{
-	for (const Ball& ball : balls) {
-		const sf::Vector2f v = position - ball.position;
-		const float dist = sqrt(v.x*v.x + v.y * v.y);
-		if (dist < ball.r) {
-			return &ball;
-		}
-	}
-
-	return nullptr;
-}
-
 
 struct Conf
 {
@@ -186,6 +62,31 @@ Conf loadUserConf()
 }
 
 
+void createVpHandlerControls(sfev::EventManager& ev_manager, ViewportHandler& vp_handler)
+{
+    // Viewport Handler controls
+    ev_manager.addMousePressedCallback(sf::Mouse::Left, [&](sfev::CstEv) {
+        vp_handler.click(ev_manager.getFloatMousePosition());
+    });
+
+    ev_manager.addMouseReleasedCallback(sf::Mouse::Left, [&](sfev::CstEv) {
+        vp_handler.unclick();
+    });
+
+    ev_manager.addEventCallback(sf::Event::MouseMoved, [&](sfev::CstEv) {
+        vp_handler.setMousePosition(ev_manager.getFloatMousePosition());
+    });
+    
+    ev_manager.addKeyPressedCallback(sf::Keyboard::R, [&](sfev::CstEv) {
+        vp_handler.reset();
+    });
+    
+    ev_manager.addEventCallback(sf::Event::MouseWheelScrolled, [&](sfev::CstEv e) {
+        vp_handler.wheelZoom(e.mouseWheelScroll.delta);
+    });
+}
+
+
 int main()
 {
 	Conf conf = loadUserConf();
@@ -194,7 +95,7 @@ int main()
 
     sf::ContextSettings settings;
     settings.antialiasingLevel = 8;
-    sf::RenderWindow window(sf::VideoMode(conf.win_width, conf.win_height), "NoCol", sf::Style::Fullscreen, settings);
+    sf::RenderWindow window(sf::VideoMode(conf.win_width, conf.win_height), "NoCol", sf::Style::Default, settings);
     window.setVerticalSyncEnabled(true);
 
     float speedDownFactor = 1;
@@ -231,17 +132,21 @@ int main()
     traces.clear(sf::Color::Black);
     traces.display();
 
-	DisplayManager display_manager(window);
-	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::A, [&](sfev::CstEv) { drawTraces = !drawTraces; });
-	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::C, [&](sfev::CstEv) { traces.clear(); });
-	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::Space, [&](sfev::CstEv) {  
+	ViewportHandler vp_handler(sf::Vector2f(WIN_WIDTH, WIN_HEIGHT));
+    sfev::EventManager ev_manager(window, true);
+    
+	ev_manager.addKeyReleasedCallback(sf::Keyboard::A, [&](sfev::CstEv) { drawTraces = !drawTraces; });
+	ev_manager.addKeyReleasedCallback(sf::Keyboard::C, [&](sfev::CstEv) { traces.clear(); });
+	ev_manager.addKeyReleasedCallback(sf::Keyboard::Space, [&](sfev::CstEv) {
 		speedDownFactorGoal = speedDownFactor == 1 ? 10.0f : 1.0f;
 	});
-	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::Escape, [&](sfev::CstEv) {window.close(); });
-	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::E, [&](sfev::CstEv) { 
+	ev_manager.addKeyReleasedCallback(sf::Keyboard::Escape, [&](sfev::CstEv) {window.close(); });
+	ev_manager.addKeyReleasedCallback(sf::Keyboard::E, [&](sfev::CstEv) {
 		synccEnable = !synccEnable;
 		window.setVerticalSyncEnabled(synccEnable);
 	});
+    
+    createVpHandlerControls(ev_manager, vp_handler);
 
 	const Ball* focus = nullptr;
 
@@ -250,20 +155,11 @@ int main()
     while (window.isOpen()) {
         sf::Vector2i mousePos = sf::Mouse::getPosition(window);
 
-		std::vector<sf::Event> events = display_manager.processEvents();
-		const sf::RenderStates rs = display_manager.getRenderStates();
+		ev_manager.processEvents();
+		const sf::RenderStates rs = vp_handler.getRenderState();
 
 		if (waitingSpeedFactor != speedDownFactorGoal) {
 			waitingSpeedFactor += speedDownFactorGoal - waitingSpeedFactor;
-		}
-
-		if (display_manager.clic) {
-			focus = getBallAt(display_manager.getWorldMousePosition(), balls);
-			display_manager.clic = false;
-		}
-
-		if (focus) {
-			display_manager.setOffset(focus->position.x, focus->position.y);
 		}
 
 		bool stable = true;
@@ -327,11 +223,6 @@ int main()
 		center_of_mass /= float(balls.size());
 
 		const float com_r = 4.0f;
-		/*sf::CircleShape com_representation(com_r);
-		com_representation.setFillColor(sf::Color::Cyan);
-		com_representation.setOrigin(com_r, com_r);
-		com_representation.setPosition(center_of_mass);
-		window.draw(com_representation, rs);*/
 
 		window.display();
 
