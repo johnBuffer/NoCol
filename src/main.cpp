@@ -118,6 +118,12 @@ bool update(std::vector<Ball>& balls, float speed)
 
 				current_ball.position += 0.5f * (minDist - dist) * collide_axe;
 				collider.position -= 0.5f * (minDist - dist) * collide_axe;
+                // Remove the following to cause the bug
+                const auto axis_vel_1  = dot(current_ball.velocity, collide_axe) * collide_axe;
+                const auto axis_vel_2  = dot(collider.velocity, collide_axe) * collide_axe;
+                const float bounce     = 0.25f;
+                current_ball.velocity -= bounce * (axis_vel_1 - axis_vel_2);
+                collider.velocity     -= bounce * (axis_vel_2 - axis_vel_1);
 			}
 		}
 	}
@@ -194,7 +200,7 @@ int main()
 
     sf::ContextSettings settings;
     settings.antialiasingLevel = 8;
-    sf::RenderWindow window(sf::VideoMode(conf.win_width, conf.win_height), "NoCol", sf::Style::Fullscreen, settings);
+    sf::RenderWindow window(sf::VideoMode(conf.win_width, conf.win_height), "NoCol", sf::Style::Default, settings);
     window.setVerticalSyncEnabled(true);
 
     float speedDownFactor = 1;
