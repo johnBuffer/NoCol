@@ -83,6 +83,17 @@ struct Ball
 	}
 };
 
+void spawn(std::vector<Ball>& balls, int minSize, int maxSize) {
+    const float angle = RNGf::getUnder(2.0f * 3.141592653f);
+    const float radius = 350.0f;
+
+    const float start_x = radius * cos(angle);
+    const float start_y = radius * sin(angle);
+
+    balls.push_back(Ball(start_x + WIN_WIDTH * 0.5f, start_y + WIN_HEIGHT * 0.5f,
+                RNGf::getRange(static_cast<float>(minSize), static_cast<float>(maxSize))));
+}
+
 bool update(std::vector<Ball>& balls, float speed)
 {
     bool stable = true;
@@ -212,16 +223,8 @@ int main()
 
 	const float spawn_range_factor = 0.5f;
     std::vector<Ball> balls;
-	for (int i(0); i < nBalls; i++) {
-		const float angle = RNGf::getUnder(2.0f * 3.141592653f);
-		const float radius = 350.0f;
-
-		const float start_x = radius * cos(angle);
-		const float start_y = radius * sin(angle);
-
-		balls.push_back(Ball(start_x + WIN_WIDTH * 0.5f, start_y + WIN_HEIGHT * 0.5f,
-			RNGf::getRange(static_cast<float>(minSize), static_cast<float>(maxSize))));
-	}
+	for (int i(0); i < nBalls; i++)
+        spawn(balls, minSize, maxSize);
 
     sf::RenderTexture traces, blurTexture, renderer;
     blurTexture.create(WIN_WIDTH, WIN_HEIGHT);
@@ -231,22 +234,26 @@ int main()
     traces.clear(sf::Color::Black);
     traces.display();
 
-	DisplayManager display_manager(window);
-	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::A, [&](sfev::CstEv) { drawTraces = !drawTraces; });
-	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::C, [&](sfev::CstEv) { traces.clear(); });
-	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::Space, [&](sfev::CstEv) {  
-		speedDownFactorGoal = speedDownFactor == 1 ? 10.0f : 1.0f;
-	});
-	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::Escape, [&](sfev::CstEv) {window.close(); });
-	display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::E, [&](sfev::CstEv) { 
-		synccEnable = !synccEnable;
-		window.setVerticalSyncEnabled(synccEnable);
-	});
+    DisplayManager display_manager(window);
+    display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::A, [&](sfev::CstEv) { drawTraces = !drawTraces; });
+    display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::C, [&](sfev::CstEv) { traces.clear(); });
+    display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::Space, [&](sfev::CstEv) {
+            speedDownFactorGoal = speedDownFactor == 1 ? 10.0f : 1.0f;
+            });
+    display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::Escape, [&](sfev::CstEv) {window.close(); });
+    display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::E, [&](sfev::CstEv) {
+            synccEnable = !synccEnable;
+            window.setVerticalSyncEnabled(synccEnable);
+            });
+    display_manager.event_manager.addKeyReleasedCallback(sf::Keyboard::D, [&](sfev::CstEv) {
+            nBalls++;
+            spawn(balls, minSize, maxSize);
+            });
 
 	const Ball* focus = nullptr;
 
 	uint32_t ok_count = 0;
- 
+
     while (window.isOpen()) {
         sf::Vector2i mousePos = sf::Mouse::getPosition(window);
 

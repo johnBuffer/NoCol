@@ -9,6 +9,7 @@ The following keyboard shortcuts are available
 * <kbd>E</kbd> toggle v-sync. V-sync limits the number of frames per second, so disabling it speeds up the simulation.
 * <kbd>A</kbd> toggle the visibility of the traces.
 * <kbd>space</kbd> toggle slow-motion.
+* <kbd>D</kbd> spawn a ball.
 * <kbd>R</kbd> reset the view.
 * <kbd>esc</kbd> close the application.
 
